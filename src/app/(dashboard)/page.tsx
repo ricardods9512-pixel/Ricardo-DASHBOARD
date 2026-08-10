@@ -10,9 +10,10 @@ import { AdAnalysisMonth, type AdEntry } from '@/components/ad-analysis-month'
 import { AdEntryForm } from '@/components/ad-entry-form'
 import { AgendaMonth, type AgendaLead } from '@/components/agenda-month'
 import { AgendaEntryForm } from '@/components/agenda-entry-form'
+import { StudyQuestTable, type StudyQuestClient } from '@/components/studyquest-table'
+import { StudyQuestEntryForm } from '@/components/studyquest-entry-form'
 import { addBusinessMetric, addDiscordMetric } from './metrics-actions'
 import { MetricsTabs } from './metrics-tabs'
-import { PendingTab } from './pending-tab'
 import type { BusinessMetric, DiscordMetric } from '@/lib/data/types'
 import { levelForXp, studentLevelBand, STUDENT_LEVEL_BANDS } from '@/lib/data/gamification'
 import { buildKpiYearTable } from '@/lib/data/kpi-table'
@@ -77,6 +78,7 @@ export default async function MetricasPage() {
     { data: channelRows },
     { data: adRows },
     { data: agendaRows },
+    { data: sqRows },
   ] = await Promise.all([
     supabase
       .from('business_metrics')
@@ -100,6 +102,11 @@ export default async function MetricasPage() {
       .from('agenda_leads')
       .select('*')
       .order('month', { ascending: false })
+      .order('sort_order', { ascending: true })
+      .limit(2000),
+    supabase
+      .from('studyquest_clients')
+      .select('*')
       .order('sort_order', { ascending: true })
       .limit(2000),
   ])
@@ -131,6 +138,30 @@ export default async function MetricasPage() {
     agendasByMonth.set(lead.month, list)
   }
   const agendaMonths = Array.from(agendasByMonth.keys()).sort((a, b) => (a < b ? 1 : -1))
+
+  const studyQuestClients = (sqRows ?? []) as StudyQuestClient[]
+  const sqGroups = new Map<string, StudyQuestClient[]>()
+  for (const c of studyQuestClients) {
+    const key = c.grupo ?? '__main__'
+    const list = sqGroups.get(key) ?? []
+    list.push(c)
+    sqGroups.set(key, list)
+  }
+  const sqMainClients = sqGroups.get('__main__') ?? []
+  const sqOtherGroups = Array.from(sqGroups.entries()).filter(([key]) => key !== '__main__')
+
+  const now = new Date()
+  const todayStr = now.toISOString().slice(0, 10)
+  const in30DaysStr = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const currentMonthStr = todayStr.slice(0, 7)
+  const sqCasosExito = studyQuestClients.filter((c) => c.exito_entrevista === 1).length
+  const sqVencidasSinRenovar = studyQuestClients.filter(
+    (c) => c.toca_6m !== null && c.toca_6m < todayStr && c.renovaciones === 0,
+  ).length
+  const sqProximos30 = studyQuestClients.filter((c) =>
+    [c.toca_3m, c.toca_6m, c.toca_9m].some((d) => d !== null && d >= todayStr && d <= in30DaysStr),
+  ).length
+  const sqEsteMes = studyQuestClients.filter((c) => c.fecha_alta?.slice(0, 7) === currentMonthStr).length
 
   const recentBusiness = business.slice(-12)
   const latest = recentBusiness[recentBusiness.length - 1]
@@ -504,6 +535,37 @@ export default async function MetricasPage() {
     </div>
   )
 
+  const studyQuestTab = (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-base font-semibold">⚔️ Study Quest</h2>
+        <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
+          Seguimiento de alumnos, renovaciones y niveles de XP. Editá cualquier campo y tocá &quot;Guardar&quot; en la fila.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatTile label="Clientes" value={String(studyQuestClients.length)} deltaTone="neutral" />
+        <StatTile label="Casos Éxito" value={String(sqCasosExito)} deltaTone="good" />
+        <StatTile label="Vencidas sin renovar" value={String(sqVencidasSinRenovar)} deltaTone="bad" />
+        <StatTile label="Próximos 30 días" value={String(sqProximos30)} deltaTone="neutral" />
+        <StatTile label="Alta este mes" value={String(sqEsteMes)} deltaTone="good" />
+      </div>
+
+      {studyQuestClients.length > 0 ? (
+        <>
+          <StudyQuestTable title="🎓 Alumnos" clients={sqMainClients} />
+          {sqOtherGroups.map(([grupo, clients]) => (
+            <StudyQuestTable key={grupo} title={`📦 ${grupo}`} clients={clients} />
+          ))}
+        </>
+      ) : (
+        <EmptyChartState />
+      )}
+      <StudyQuestEntryForm />
+    </div>
+  )
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -520,7 +582,7 @@ export default async function MetricasPage() {
           'kpis-2026': kpis2026Tab,
           'analisis-ads': analisisAdsTab,
           agendas: agendasTab,
-          'study-quest': <PendingTab label="StudyQuest" />,
+          'study-quest': studyQuestTab,
           'kpis-2025': kpis2025Tab,
         }}
       />
