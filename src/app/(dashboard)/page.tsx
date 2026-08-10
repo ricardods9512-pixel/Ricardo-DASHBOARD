@@ -6,6 +6,8 @@ import { FunnelChart } from '@/components/charts/funnel-chart'
 import { ProgressBar } from '@/components/progress-bar'
 import { KpiYearTable } from '@/components/kpi-year-table'
 import { ChannelMetricForm } from '@/components/channel-metric-form'
+import { AdAnalysisMonth, type AdEntry } from '@/components/ad-analysis-month'
+import { AdEntryForm } from '@/components/ad-entry-form'
 import { addBusinessMetric, addDiscordMetric } from './metrics-actions'
 import { MetricsTabs } from './metrics-tabs'
 import { PendingTab } from './pending-tab'
@@ -66,7 +68,7 @@ function ChannelSection({
 export default async function MetricasPage() {
   const supabase = await createClient()
 
-  const [{ data: businessRows }, { data: discordRows }, { data: studentRows }, { data: channelRows }] =
+  const [{ data: businessRows }, { data: discordRows }, { data: studentRows }, { data: channelRows }, { data: adRows }] =
     await Promise.all([
       supabase
         .from('business_metrics')
@@ -80,6 +82,12 @@ export default async function MetricasPage() {
         .limit(12),
       supabase.from('school_students').select('level'),
       supabase.from('channel_metrics').select('channel, month, data').order('month', { ascending: true }),
+      supabase
+        .from('ad_analysis')
+        .select('*')
+        .order('month', { ascending: false })
+        .order('sort_order', { ascending: true })
+        .limit(2000),
     ])
 
   const business = (businessRows ?? []) as BusinessMetric[]
@@ -91,6 +99,15 @@ export default async function MetricasPage() {
     rowsByChannel[row.channel].push({ month: row.month, data: row.data })
   }
   const students = (studentRows ?? []) as { level: number | null }[]
+  const adEntries = (adRows ?? []) as AdEntry[]
+
+  const adsByMonth = new Map<string, AdEntry[]>()
+  for (const entry of adEntries) {
+    const list = adsByMonth.get(entry.month) ?? []
+    list.push(entry)
+    adsByMonth.set(entry.month, list)
+  }
+  const adMonths = Array.from(adsByMonth.keys()).sort((a, b) => (a < b ? 1 : -1))
 
   const recentBusiness = business.slice(-12)
   const latest = recentBusiness[recentBusiness.length - 1]
@@ -416,6 +433,30 @@ export default async function MetricasPage() {
     </div>
   )
 
+  const analisisAdsTab = (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-base font-semibold">🎯 Análisis Ads</h2>
+        <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
+          Histórico semanal de cada anuncio, mes a mes
+        </p>
+      </div>
+      {adMonths.length > 0 ? (
+        adMonths.map((month, i) => (
+          <AdAnalysisMonth
+            key={month}
+            month={month}
+            entries={adsByMonth.get(month)!}
+            defaultOpen={i === 0}
+          />
+        ))
+      ) : (
+        <EmptyChartState />
+      )}
+      <AdEntryForm />
+    </div>
+  )
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -430,7 +471,7 @@ export default async function MetricasPage() {
           dashboard: dashboardTab,
           'kpi-pro-funnel': kpiProFunnelTab,
           'kpis-2026': kpis2026Tab,
-          'analisis-ads': <PendingTab label="Análisis Ads" />,
+          'analisis-ads': analisisAdsTab,
           agendas: <PendingTab label="Agendas" />,
           'study-quest': <PendingTab label="StudyQuest" />,
           'kpis-2025': kpis2025Tab,
