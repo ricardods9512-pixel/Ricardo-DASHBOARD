@@ -1,8 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { StatTile } from '@/components/stat-tile'
 import { TrendChart } from '@/components/charts/trend-chart'
+import { FunnelChart } from '@/components/charts/funnel-chart'
+import { ProgressBar } from '@/components/progress-bar'
 import { addBusinessMetric, addDiscordMetric } from './metrics-actions'
 import type { BusinessMetric, DiscordMetric } from '@/lib/data/types'
+import { levelForXp, studentLevelBand, STUDENT_LEVEL_BANDS } from '@/lib/data/gamification'
 
 const currency = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -20,24 +23,27 @@ function pctDelta(current: number | null, previous: number | null) {
 export default async function MetricasPage() {
   const supabase = await createClient()
 
-  const [{ data: businessRows }, { data: discordRows }] = await Promise.all([
+  const [{ data: businessRows }, { data: discordRows }, { data: studentRows }] = await Promise.all([
     supabase
       .from('business_metrics')
       .select('*')
       .order('month', { ascending: true })
-      .limit(12),
+      .limit(240),
     supabase
       .from('discord_metrics')
       .select('*')
       .order('month', { ascending: true })
       .limit(12),
+    supabase.from('school_students').select('level'),
   ])
 
   const business = (businessRows ?? []) as BusinessMetric[]
   const discord = (discordRows ?? []) as DiscordMetric[]
+  const students = (studentRows ?? []) as { level: number | null }[]
 
-  const latest = business[business.length - 1]
-  const previous = business[business.length - 2]
+  const recentBusiness = business.slice(-12)
+  const latest = recentBusiness[recentBusiness.length - 1]
+  const previous = recentBusiness[recentBusiness.length - 2]
 
   const roas = (m?: BusinessMetric) =>
     m?.ads_investment ? (m.sales_amount ?? 0) / m.ads_investment : null
@@ -48,19 +54,72 @@ export default async function MetricasPage() {
   const cashDelta = pctDelta(latest?.cash_collected ?? null, previous?.cash_collected ?? null)
   const roasDelta = pctDelta(roas(latest), roas(previous))
 
-  const businessChartData = business.map((m) => ({
+  const businessChartData = recentBusiness.map((m) => ({
     label: monthLabel.format(new Date(m.month)),
     sales_amount: m.sales_amount ?? 0,
     cash_collected: m.cash_collected ?? 0,
   }))
 
-  const funnelChartData = business.map((m) => ({
+  const funnelChartData = recentBusiness.map((m) => ({
     label: monthLabel.format(new Date(m.month)),
     sales_calls_scheduled: m.sales_calls_scheduled ?? 0,
     sales_calls_completed: m.sales_calls_completed ?? 0,
     offers_given: m.offers_given ?? 0,
     offers_accepted: m.offers_accepted ?? 0,
   }))
+
+  // --- Gamificación: nivel, XP, insignias, funnel acumulado ---
+  const sum = (key: keyof BusinessMetric) =>
+    business.reduce((acc, m) => acc + (Number(m[key]) || 0), 0)
+
+  const totalXp = sum('sales_amount')
+  const totalCash = sum('cash_collected')
+  const totalConversations = sum('conversations')
+  const totalCallsScheduled = sum('sales_calls_scheduled')
+  const totalCallsCompleted = sum('sales_calls_completed')
+  const totalOffersGiven = sum('offers_given')
+  const totalOffersAccepted = sum('offers_accepted')
+
+  const level = levelForXp(totalXp)
+  const cobradoPct = totalXp > 0 ? (totalCash / totalXp) * 100 : 0
+  const cierrePct = totalOffersGiven > 0 ? (totalOffersAccepted / totalOffersGiven) * 100 : 0
+
+  const currentYear = new Date().getFullYear()
+  const currentYearSales = business
+    .filter((m) => new Date(m.month).getFullYear() === currentYear)
+    .reduce((acc, m) => acc + (m.sales_amount ?? 0), 0)
+  const previousYearSales = business
+    .filter((m) => new Date(m.month).getFullYear() === currentYear - 1)
+    .reduce((acc, m) => acc + (m.sales_amount ?? 0), 0)
+
+  let streakMonths = 0
+  for (let i = business.length - 1; i >= 0; i--) {
+    if ((business[i].sales_amount ?? 0) > 0) streakMonths++
+    else break
+  }
+
+  const badges = [
+    business.some((m) => (m.sales_amount ?? 0) >= 10000) && '🥇 Mes 5 cifras',
+    cobradoPct >= 60 && '💎 Cobrador Élite',
+    totalXp >= 50000 && '🚀 Club 50K',
+    streakMonths >= 3 && `📆 Racha ${streakMonths} meses`,
+    previousYearSales > 0 && currentYearSales > previousYearSales && '⚡ Superando el año anterior',
+  ].filter((b): b is string => Boolean(b))
+
+  const funnelStages = [
+    { label: 'Conversaciones', value: totalConversations, color: 'var(--series-1)' },
+    { label: 'Llamadas agendadas', value: totalCallsScheduled, color: 'var(--series-3)' },
+    { label: 'Llamadas realizadas', value: totalCallsCompleted, color: 'var(--series-2)' },
+    { label: 'Ofertas dadas', value: totalOffersGiven, color: 'var(--status-good)' },
+    { label: 'Ofertas aceptadas', value: totalOffersAccepted, color: 'var(--series-1)' },
+  ]
+
+  const studentLevelCounts = STUDENT_LEVEL_BANDS.map((band) => ({
+    label: band,
+    value: students.filter((s) => studentLevelBand(s.level) === band).length,
+    color: 'var(--series-1)',
+  }))
+  const hasStudentLevels = studentLevelCounts.some((s) => s.value > 0)
 
   const discordChartData = discord.map((d) => ({
     label: monthLabel.format(new Date(d.month)),
@@ -76,6 +135,57 @@ export default async function MetricasPage() {
           Resumen mensual de facturación, clientes y comunidad
         </p>
       </div>
+
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">🎮 Nivel y progreso</h2>
+          <span className="text-sm font-semibold text-[var(--series-1)]">
+            Nv. {level.number} · {level.name}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-[var(--foreground-muted)]">
+          XP: {Math.round(totalXp).toLocaleString('es-AR')}
+          {level.next && ` · próximo nivel: ${level.next} (${level.nextThreshold!.toLocaleString('es-AR')} XP)`}
+        </p>
+
+        {badges.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {badges.map((b) => (
+              <span
+                key={b}
+                className="rounded-full border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--foreground-secondary)]"
+              >
+                {b}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <ProgressBar
+            label={level.next ? `Hacia ${level.next}` : 'Nivel máximo alcanzado'}
+            pct={level.progressPct}
+            color="var(--series-1)"
+          />
+          <ProgressBar label="% Cobrado (histórico)" pct={cobradoPct} color="var(--series-3)" />
+          <ProgressBar label="% Cierre de leads" pct={cierrePct} color="var(--series-2)" />
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div>
+            <h3 className="text-sm font-semibold">Funnel de ventas (histórico)</h3>
+            <FunnelChart stages={funnelStages} />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold">Alumnos por nivel</h3>
+            {hasStudentLevels ? (
+              <FunnelChart stages={studentLevelCounts} />
+            ) : (
+              <EmptyChartState />
+            )}
+          </div>
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
