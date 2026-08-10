@@ -3,9 +3,13 @@ import { StatTile } from '@/components/stat-tile'
 import { TrendChart } from '@/components/charts/trend-chart'
 import { FunnelChart } from '@/components/charts/funnel-chart'
 import { ProgressBar } from '@/components/progress-bar'
+import { KpiYearTable } from '@/components/kpi-year-table'
 import { addBusinessMetric, addDiscordMetric } from './metrics-actions'
+import { MetricsTabs } from './metrics-tabs'
+import { PendingTab } from './pending-tab'
 import type { BusinessMetric, DiscordMetric } from '@/lib/data/types'
 import { levelForXp, studentLevelBand, STUDENT_LEVEL_BANDS } from '@/lib/data/gamification'
+import { buildKpiYearTable } from '@/lib/data/kpi-table'
 
 const currency = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -127,15 +131,34 @@ export default async function MetricasPage() {
     total_members: d.total_members ?? 0,
   }))
 
-  return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Métricas del negocio</h1>
-        <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-          Resumen mensual de facturación, clientes y comunidad
-        </p>
-      </div>
+  const kpi2026 = buildKpiYearTable(business, 2026)
+  const kpi2025 = buildKpiYearTable(business, 2025)
 
+  const businessMetricForm = (
+    <details className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+      <summary className="cursor-pointer text-sm font-semibold">
+        + Agregar / actualizar métricas del negocio del mes
+      </summary>
+      <form action={addBusinessMetric} className="mt-4 grid grid-cols-2 gap-3">
+        <Field label="Mes" name="month" type="month" required />
+        <Field label="Inversión Ads" name="ads_investment" type="number" step="0.01" />
+        <Field label="Seguidores nuevos" name="new_followers" type="number" />
+        <Field label="Conversaciones" name="conversations" type="number" />
+        <Field label="Triajes agendados" name="triage_scheduled" type="number" />
+        <Field label="Triajes realizados" name="triage_completed" type="number" />
+        <Field label="Videollamadas agendadas" name="sales_calls_scheduled" type="number" />
+        <Field label="Videollamadas realizadas" name="sales_calls_completed" type="number" />
+        <Field label="Ofertas dadas" name="offers_given" type="number" />
+        <Field label="Ofertas aceptadas" name="offers_accepted" type="number" />
+        <Field label="Importe ventas" name="sales_amount" type="number" step="0.01" />
+        <Field label="Dinero recibido" name="cash_collected" type="number" step="0.01" />
+        <SubmitButton />
+      </form>
+    </details>
+  )
+
+  const dashboardTab = (
+    <div className="flex flex-col gap-8">
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold">🎮 Nivel y progreso</h2>
@@ -233,7 +256,7 @@ export default async function MetricasPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-          <h2 className="text-base font-semibold">Funnel de ventas</h2>
+          <h2 className="text-base font-semibold">Funnel de ventas (por mes)</h2>
           {funnelChartData.length > 0 ? (
             <TrendChart
               data={funnelChartData}
@@ -266,26 +289,7 @@ export default async function MetricasPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <details className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-          <summary className="cursor-pointer text-sm font-semibold">
-            + Agregar / actualizar métricas del negocio del mes
-          </summary>
-          <form action={addBusinessMetric} className="mt-4 grid grid-cols-2 gap-3">
-            <Field label="Mes" name="month" type="month" required />
-            <Field label="Inversión Ads" name="ads_investment" type="number" step="0.01" />
-            <Field label="Seguidores nuevos" name="new_followers" type="number" />
-            <Field label="Conversaciones" name="conversations" type="number" />
-            <Field label="Triajes agendados" name="triage_scheduled" type="number" />
-            <Field label="Triajes realizados" name="triage_completed" type="number" />
-            <Field label="Videollamadas agendadas" name="sales_calls_scheduled" type="number" />
-            <Field label="Videollamadas realizadas" name="sales_calls_completed" type="number" />
-            <Field label="Ofertas dadas" name="offers_given" type="number" />
-            <Field label="Ofertas aceptadas" name="offers_accepted" type="number" />
-            <Field label="Importe ventas" name="sales_amount" type="number" step="0.01" />
-            <Field label="Dinero recibido" name="cash_collected" type="number" step="0.01" />
-            <SubmitButton />
-          </form>
-        </details>
+        {businessMetricForm}
 
         <details className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <summary className="cursor-pointer text-sm font-semibold">
@@ -303,6 +307,53 @@ export default async function MetricasPage() {
           </form>
         </details>
       </div>
+    </div>
+  )
+
+  const kpis2026Tab = (
+    <div className="flex flex-col gap-6">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+        <h2 className="text-base font-semibold">KPIs Año 2026</h2>
+        <div className="mt-4">
+          <KpiYearTable data={kpi2026} />
+        </div>
+      </section>
+      {businessMetricForm}
+    </div>
+  )
+
+  const kpis2025Tab = (
+    <div className="flex flex-col gap-6">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+        <h2 className="text-base font-semibold">KPIs Año 2025</h2>
+        <div className="mt-4">
+          <KpiYearTable data={kpi2025} />
+        </div>
+      </section>
+      {businessMetricForm}
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div>
+        <h1 className="text-2xl font-semibold">Métricas del negocio</h1>
+        <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
+          Resumen mensual de facturación, clientes y comunidad
+        </p>
+      </div>
+
+      <MetricsTabs
+        tabs={{
+          dashboard: dashboardTab,
+          'kpi-pro-funnel': <PendingTab label="KPI Pro Funnel" />,
+          'kpis-2026': kpis2026Tab,
+          'analisis-ads': <PendingTab label="Análisis Ads" />,
+          agendas: <PendingTab label="Agendas" />,
+          'study-quest': <PendingTab label="StudyQuest" />,
+          'kpis-2025': kpis2025Tab,
+        }}
+      />
     </div>
   )
 }
