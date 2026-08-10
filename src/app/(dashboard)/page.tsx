@@ -8,6 +8,8 @@ import { KpiYearTable } from '@/components/kpi-year-table'
 import { ChannelMetricForm } from '@/components/channel-metric-form'
 import { AdAnalysisMonth, type AdEntry } from '@/components/ad-analysis-month'
 import { AdEntryForm } from '@/components/ad-entry-form'
+import { AgendaMonth, type AgendaLead } from '@/components/agenda-month'
+import { AgendaEntryForm } from '@/components/agenda-entry-form'
 import { addBusinessMetric, addDiscordMetric } from './metrics-actions'
 import { MetricsTabs } from './metrics-tabs'
 import { PendingTab } from './pending-tab'
@@ -68,27 +70,39 @@ function ChannelSection({
 export default async function MetricasPage() {
   const supabase = await createClient()
 
-  const [{ data: businessRows }, { data: discordRows }, { data: studentRows }, { data: channelRows }, { data: adRows }] =
-    await Promise.all([
-      supabase
-        .from('business_metrics')
-        .select('*')
-        .order('month', { ascending: true })
-        .limit(240),
-      supabase
-        .from('discord_metrics')
-        .select('*')
-        .order('month', { ascending: true })
-        .limit(12),
-      supabase.from('school_students').select('level'),
-      supabase.from('channel_metrics').select('channel, month, data').order('month', { ascending: true }),
-      supabase
-        .from('ad_analysis')
-        .select('*')
-        .order('month', { ascending: false })
-        .order('sort_order', { ascending: true })
-        .limit(2000),
-    ])
+  const [
+    { data: businessRows },
+    { data: discordRows },
+    { data: studentRows },
+    { data: channelRows },
+    { data: adRows },
+    { data: agendaRows },
+  ] = await Promise.all([
+    supabase
+      .from('business_metrics')
+      .select('*')
+      .order('month', { ascending: true })
+      .limit(240),
+    supabase
+      .from('discord_metrics')
+      .select('*')
+      .order('month', { ascending: true })
+      .limit(12),
+    supabase.from('school_students').select('level'),
+    supabase.from('channel_metrics').select('channel, month, data').order('month', { ascending: true }),
+    supabase
+      .from('ad_analysis')
+      .select('*')
+      .order('month', { ascending: false })
+      .order('sort_order', { ascending: true })
+      .limit(2000),
+    supabase
+      .from('agenda_leads')
+      .select('*')
+      .order('month', { ascending: false })
+      .order('sort_order', { ascending: true })
+      .limit(2000),
+  ])
 
   const business = (businessRows ?? []) as BusinessMetric[]
   const discord = (discordRows ?? []) as DiscordMetric[]
@@ -108,6 +122,15 @@ export default async function MetricasPage() {
     adsByMonth.set(entry.month, list)
   }
   const adMonths = Array.from(adsByMonth.keys()).sort((a, b) => (a < b ? 1 : -1))
+
+  const agendaLeads = (agendaRows ?? []) as AgendaLead[]
+  const agendasByMonth = new Map<string, AgendaLead[]>()
+  for (const lead of agendaLeads) {
+    const list = agendasByMonth.get(lead.month) ?? []
+    list.push(lead)
+    agendasByMonth.set(lead.month, list)
+  }
+  const agendaMonths = Array.from(agendasByMonth.keys()).sort((a, b) => (a < b ? 1 : -1))
 
   const recentBusiness = business.slice(-12)
   const latest = recentBusiness[recentBusiness.length - 1]
@@ -457,6 +480,30 @@ export default async function MetricasPage() {
     </div>
   )
 
+  const agendasTab = (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-base font-semibold">📅 Agendas</h2>
+        <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
+          Leads y llamadas de ventas, mes a mes. Editá cualquier campo y tocá &quot;Guardar&quot; en la fila.
+        </p>
+      </div>
+      {agendaMonths.length > 0 ? (
+        agendaMonths.map((month, i) => (
+          <AgendaMonth
+            key={month}
+            month={month}
+            leads={agendasByMonth.get(month)!}
+            defaultOpen={i === 0}
+          />
+        ))
+      ) : (
+        <EmptyChartState />
+      )}
+      <AgendaEntryForm />
+    </div>
+  )
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -472,7 +519,7 @@ export default async function MetricasPage() {
           'kpi-pro-funnel': kpiProFunnelTab,
           'kpis-2026': kpis2026Tab,
           'analisis-ads': analisisAdsTab,
-          agendas: <PendingTab label="Agendas" />,
+          agendas: agendasTab,
           'study-quest': <PendingTab label="StudyQuest" />,
           'kpis-2025': kpis2025Tab,
         }}
