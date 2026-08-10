@@ -13,16 +13,23 @@ function numOrNull(formData: FormData, key: string) {
 export async function addBusinessMetric(formData: FormData) {
   const supabase = await createClient()
 
-  const { error } = await supabase.from('business_metrics').insert({
-    month: formData.get('month') as string,
-    revenue: numOrNull(formData, 'revenue'),
-    expenses: numOrNull(formData, 'expenses'),
-    new_clients: numOrNull(formData, 'new_clients'),
-    active_clients: numOrNull(formData, 'active_clients'),
-    mrr: numOrNull(formData, 'mrr'),
-    churn_rate: numOrNull(formData, 'churn_rate'),
-    conversion_rate: numOrNull(formData, 'conversion_rate'),
-  })
+  const { error } = await supabase.from('business_metrics').upsert(
+    {
+      month: formData.get('month') as string,
+      ads_investment: numOrNull(formData, 'ads_investment'),
+      new_followers: numOrNull(formData, 'new_followers'),
+      conversations: numOrNull(formData, 'conversations'),
+      triage_scheduled: numOrNull(formData, 'triage_scheduled'),
+      triage_completed: numOrNull(formData, 'triage_completed'),
+      sales_calls_scheduled: numOrNull(formData, 'sales_calls_scheduled'),
+      sales_calls_completed: numOrNull(formData, 'sales_calls_completed'),
+      offers_given: numOrNull(formData, 'offers_given'),
+      offers_accepted: numOrNull(formData, 'offers_accepted'),
+      sales_amount: numOrNull(formData, 'sales_amount'),
+      cash_collected: numOrNull(formData, 'cash_collected'),
+    },
+    { onConflict: 'month' }
+  )
 
   if (error) throw new Error(error.message)
   revalidatePath('/')

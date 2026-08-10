@@ -1,14 +1,17 @@
 export type BusinessMetric = {
   id: string
   month: string
-  revenue: number | null
-  expenses: number | null
-  new_clients: number | null
-  active_clients: number | null
-  churn_rate: number | null
-  conversion_rate: number | null
-  mrr: number | null
-  ltv: number | null
+  ads_investment: number | null
+  new_followers: number | null
+  conversations: number | null
+  triage_scheduled: number | null
+  triage_completed: number | null
+  sales_calls_scheduled: number | null
+  sales_calls_completed: number | null
+  offers_given: number | null
+  offers_accepted: number | null
+  sales_amount: number | null
+  cash_collected: number | null
   notes: string | null
 }
 

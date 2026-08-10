@@ -39,20 +39,27 @@ export default async function MetricasPage() {
   const latest = business[business.length - 1]
   const previous = business[business.length - 2]
 
-  const revenueDelta = pctDelta(latest?.revenue ?? null, previous?.revenue ?? null)
-  const activeDelta = pctDelta(latest?.active_clients ?? null, previous?.active_clients ?? null)
-  const mrrDelta = pctDelta(latest?.mrr ?? null, previous?.mrr ?? null)
+  const roas = (m?: BusinessMetric) =>
+    m?.ads_investment ? (m.sales_amount ?? 0) / m.ads_investment : null
+  const closePct = (m?: BusinessMetric) =>
+    m?.offers_given ? ((m.offers_accepted ?? 0) / m.offers_given) * 100 : null
+
+  const salesDelta = pctDelta(latest?.sales_amount ?? null, previous?.sales_amount ?? null)
+  const cashDelta = pctDelta(latest?.cash_collected ?? null, previous?.cash_collected ?? null)
+  const roasDelta = pctDelta(roas(latest), roas(previous))
 
   const businessChartData = business.map((m) => ({
     label: monthLabel.format(new Date(m.month)),
-    revenue: m.revenue ?? 0,
-    expenses: m.expenses ?? 0,
+    sales_amount: m.sales_amount ?? 0,
+    cash_collected: m.cash_collected ?? 0,
   }))
 
-  const clientsChartData = business.map((m) => ({
+  const funnelChartData = business.map((m) => ({
     label: monthLabel.format(new Date(m.month)),
-    active_clients: m.active_clients ?? 0,
-    new_clients: m.new_clients ?? 0,
+    sales_calls_scheduled: m.sales_calls_scheduled ?? 0,
+    sales_calls_completed: m.sales_calls_completed ?? 0,
+    offers_given: m.offers_given ?? 0,
+    offers_accepted: m.offers_accepted ?? 0,
   }))
 
   const discordChartData = discord.map((d) => ({
@@ -72,40 +79,40 @@ export default async function MetricasPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
-          label="Ingresos (último mes)"
-          value={latest?.revenue != null ? currency.format(latest.revenue) : '—'}
-          delta={revenueDelta !== null ? `${revenueDelta >= 0 ? '+' : ''}${revenueDelta.toFixed(1)}% vs mes anterior` : undefined}
-          deltaTone={revenueDelta !== null ? (revenueDelta >= 0 ? 'good' : 'bad') : 'neutral'}
+          label="Facturación (último mes)"
+          value={latest?.sales_amount != null ? currency.format(latest.sales_amount) : '—'}
+          delta={salesDelta !== null ? `${salesDelta >= 0 ? '+' : ''}${salesDelta.toFixed(1)}% vs mes anterior` : undefined}
+          deltaTone={salesDelta !== null ? (salesDelta >= 0 ? 'good' : 'bad') : 'neutral'}
         />
         <StatTile
-          label="MRR"
-          value={latest?.mrr != null ? currency.format(latest.mrr) : '—'}
-          delta={mrrDelta !== null ? `${mrrDelta >= 0 ? '+' : ''}${mrrDelta.toFixed(1)}% vs mes anterior` : undefined}
-          deltaTone={mrrDelta !== null ? (mrrDelta >= 0 ? 'good' : 'bad') : 'neutral'}
+          label="Cash cobrado (último mes)"
+          value={latest?.cash_collected != null ? currency.format(latest.cash_collected) : '—'}
+          delta={cashDelta !== null ? `${cashDelta >= 0 ? '+' : ''}${cashDelta.toFixed(1)}% vs mes anterior` : undefined}
+          deltaTone={cashDelta !== null ? (cashDelta >= 0 ? 'good' : 'bad') : 'neutral'}
         />
         <StatTile
-          label="Clientes activos"
-          value={latest?.active_clients != null ? String(latest.active_clients) : '—'}
-          delta={activeDelta !== null ? `${activeDelta >= 0 ? '+' : ''}${activeDelta.toFixed(1)}% vs mes anterior` : undefined}
-          deltaTone={activeDelta !== null ? (activeDelta >= 0 ? 'good' : 'bad') : 'neutral'}
+          label="ROAS"
+          value={roas(latest) != null ? `${roas(latest)!.toFixed(1)}x` : '—'}
+          delta={roasDelta !== null ? `${roasDelta >= 0 ? '+' : ''}${roasDelta.toFixed(1)}% vs mes anterior` : undefined}
+          deltaTone={roasDelta !== null ? (roasDelta >= 0 ? 'good' : 'bad') : 'neutral'}
         />
         <StatTile
-          label="Churn"
-          value={latest?.churn_rate != null ? `${latest.churn_rate}%` : '—'}
+          label="% Cierre (ofertas)"
+          value={closePct(latest) != null ? `${closePct(latest)!.toFixed(1)}%` : '—'}
           deltaTone="neutral"
         />
       </div>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Ingresos y gastos</h2>
+          <h2 className="text-base font-semibold">Facturación vs Cash cobrado</h2>
         </div>
         {businessChartData.length > 0 ? (
           <TrendChart
             data={businessChartData}
             series={[
-              { key: 'revenue', label: 'Ingresos', color: 'var(--series-1)' },
-              { key: 'expenses', label: 'Gastos', color: 'var(--series-2)' },
+              { key: 'sales_amount', label: 'Facturación', color: 'var(--series-1)' },
+              { key: 'cash_collected', label: 'Cash cobrado', color: 'var(--series-2)' },
             ]}
             valueFormatter={(v) => currency.format(v)}
           />
@@ -116,13 +123,15 @@ export default async function MetricasPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-          <h2 className="text-base font-semibold">Clientes</h2>
-          {clientsChartData.length > 0 ? (
+          <h2 className="text-base font-semibold">Funnel de ventas</h2>
+          {funnelChartData.length > 0 ? (
             <TrendChart
-              data={clientsChartData}
+              data={funnelChartData}
               series={[
-                { key: 'active_clients', label: 'Activos', color: 'var(--series-1)' },
-                { key: 'new_clients', label: 'Nuevos', color: 'var(--series-3)' },
+                { key: 'sales_calls_scheduled', label: 'Llamadas agendadas', color: 'var(--series-1)' },
+                { key: 'sales_calls_completed', label: 'Llamadas realizadas', color: 'var(--series-3)' },
+                { key: 'offers_given', label: 'Ofertas dadas', color: 'var(--series-2)' },
+                { key: 'offers_accepted', label: 'Ofertas aceptadas', color: 'var(--status-good)' },
               ]}
             />
           ) : (
@@ -149,17 +158,21 @@ export default async function MetricasPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <details className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <summary className="cursor-pointer text-sm font-semibold">
-            + Agregar métricas del negocio del mes
+            + Agregar / actualizar métricas del negocio del mes
           </summary>
           <form action={addBusinessMetric} className="mt-4 grid grid-cols-2 gap-3">
             <Field label="Mes" name="month" type="month" required />
-            <Field label="Ingresos" name="revenue" type="number" step="0.01" />
-            <Field label="Gastos" name="expenses" type="number" step="0.01" />
-            <Field label="MRR" name="mrr" type="number" step="0.01" />
-            <Field label="Clientes nuevos" name="new_clients" type="number" />
-            <Field label="Clientes activos" name="active_clients" type="number" />
-            <Field label="Churn %" name="churn_rate" type="number" step="0.01" />
-            <Field label="Conversión %" name="conversion_rate" type="number" step="0.01" />
+            <Field label="Inversión Ads" name="ads_investment" type="number" step="0.01" />
+            <Field label="Seguidores nuevos" name="new_followers" type="number" />
+            <Field label="Conversaciones" name="conversations" type="number" />
+            <Field label="Triajes agendados" name="triage_scheduled" type="number" />
+            <Field label="Triajes realizados" name="triage_completed" type="number" />
+            <Field label="Videollamadas agendadas" name="sales_calls_scheduled" type="number" />
+            <Field label="Videollamadas realizadas" name="sales_calls_completed" type="number" />
+            <Field label="Ofertas dadas" name="offers_given" type="number" />
+            <Field label="Ofertas aceptadas" name="offers_accepted" type="number" />
+            <Field label="Importe ventas" name="sales_amount" type="number" step="0.01" />
+            <Field label="Dinero recibido" name="cash_collected" type="number" step="0.01" />
             <SubmitButton />
           </form>
         </details>
