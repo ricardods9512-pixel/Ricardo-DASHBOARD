@@ -114,7 +114,7 @@ export default async function MetricasPage() {
               { key: 'sales_amount', label: 'Facturación', color: 'var(--series-1)' },
               { key: 'cash_collected', label: 'Cash cobrado', color: 'var(--series-2)' },
             ]}
-            valueFormatter={(v) => currency.format(v)}
+            valueFormat="currency"
           />
         ) : (
           <EmptyChartState />
