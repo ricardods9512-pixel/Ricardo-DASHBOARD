@@ -1,15 +1,25 @@
+import type { ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { StatTile } from '@/components/stat-tile'
 import { TrendChart } from '@/components/charts/trend-chart'
 import { FunnelChart } from '@/components/charts/funnel-chart'
 import { ProgressBar } from '@/components/progress-bar'
 import { KpiYearTable } from '@/components/kpi-year-table'
+import { ChannelMetricForm } from '@/components/channel-metric-form'
 import { addBusinessMetric, addDiscordMetric } from './metrics-actions'
 import { MetricsTabs } from './metrics-tabs'
 import { PendingTab } from './pending-tab'
 import type { BusinessMetric, DiscordMetric } from '@/lib/data/types'
 import { levelForXp, studentLevelBand, STUDENT_LEVEL_BANDS } from '@/lib/data/gamification'
 import { buildKpiYearTable } from '@/lib/data/kpi-table'
+import { CHANNELS } from '@/lib/data/channel-config'
+import {
+  buildChannelYearTable,
+  buildTotalYearTable,
+  buildMrrYearTable,
+  MRR_FIELDS,
+  type ChannelMetricRow,
+} from '@/lib/data/channel-table'
 
 const currency = new Intl.NumberFormat('es-ES', {
   style: 'currency',
@@ -24,25 +34,62 @@ function pctDelta(current: number | null, previous: number | null) {
   return ((current - previous) / Math.abs(previous)) * 100
 }
 
+const CHANNEL_HEADER_CLASS: Record<string, string> = {
+  follower_ads: 'bg-[#E1306C] text-white',
+  funnel_vsl: 'bg-[#f5c518] text-black',
+  lead_magnets: 'bg-[#14b8a6] text-white',
+  youtube: 'bg-[#FF0000] text-white',
+}
+
+function ChannelSection({
+  title,
+  subtitle,
+  headerClass,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  headerClass: string
+  children: ReactNode
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+      <div className={`px-5 py-3 ${headerClass}`}>
+        <h2 className="text-base font-semibold">{title}</h2>
+        {subtitle && <p className="text-xs opacity-90">{subtitle}</p>}
+      </div>
+      <div className="p-5">{children}</div>
+    </section>
+  )
+}
+
 export default async function MetricasPage() {
   const supabase = await createClient()
 
-  const [{ data: businessRows }, { data: discordRows }, { data: studentRows }] = await Promise.all([
-    supabase
-      .from('business_metrics')
-      .select('*')
-      .order('month', { ascending: true })
-      .limit(240),
-    supabase
-      .from('discord_metrics')
-      .select('*')
-      .order('month', { ascending: true })
-      .limit(12),
-    supabase.from('school_students').select('level'),
-  ])
+  const [{ data: businessRows }, { data: discordRows }, { data: studentRows }, { data: channelRows }] =
+    await Promise.all([
+      supabase
+        .from('business_metrics')
+        .select('*')
+        .order('month', { ascending: true })
+        .limit(240),
+      supabase
+        .from('discord_metrics')
+        .select('*')
+        .order('month', { ascending: true })
+        .limit(12),
+      supabase.from('school_students').select('level'),
+      supabase.from('channel_metrics').select('channel, month, data').order('month', { ascending: true }),
+    ])
 
   const business = (businessRows ?? []) as BusinessMetric[]
   const discord = (discordRows ?? []) as DiscordMetric[]
+  const channelMetrics = (channelRows ?? []) as { channel: string; month: string; data: Record<string, number> }[]
+  const rowsByChannel: Record<string, ChannelMetricRow[]> = {}
+  for (const row of channelMetrics) {
+    rowsByChannel[row.channel] ??= []
+    rowsByChannel[row.channel].push({ month: row.month, data: row.data })
+  }
   const students = (studentRows ?? []) as { level: number | null }[]
 
   const recentBusiness = business.slice(-12)
@@ -334,6 +381,41 @@ export default async function MetricasPage() {
     </div>
   )
 
+  const funnelYear = new Date().getFullYear()
+  const totalYearTable = buildTotalYearTable(rowsByChannel, funnelYear)
+  const mrrYearTable = buildMrrYearTable(rowsByChannel.mrr_recurrencia ?? [], funnelYear)
+
+  const kpiProFunnelTab = (
+    <div className="flex flex-col gap-6">
+      <ChannelSection title="TOTAL" subtitle="Suma automática de los 4 canales" headerClass="bg-[#d03b3b] text-white">
+        <KpiYearTable data={totalYearTable} />
+        <p className="mt-3 text-xs text-[var(--foreground-muted)]">
+          Esta tabla se calcula sola a partir de las 5 tablas de abajo, no hace falta cargarla a mano.
+        </p>
+      </ChannelSection>
+
+      {CHANNELS.map((config) => (
+        <ChannelSection
+          key={config.id}
+          title={`${config.icon} ${config.label}`}
+          headerClass={CHANNEL_HEADER_CLASS[config.id]}
+        >
+          <KpiYearTable data={buildChannelYearTable(rowsByChannel[config.id] ?? [], config, funnelYear)} />
+          <div className="mt-4">
+            <ChannelMetricForm channel={config.id} fields={config.fields} />
+          </div>
+        </ChannelSection>
+      ))}
+
+      <ChannelSection title="🔁 MRR Recurrencia" headerClass="bg-[var(--status-warning)] text-black">
+        <KpiYearTable data={mrrYearTable} />
+        <div className="mt-4">
+          <ChannelMetricForm channel="mrr_recurrencia" fields={MRR_FIELDS} />
+        </div>
+      </ChannelSection>
+    </div>
+  )
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -346,7 +428,7 @@ export default async function MetricasPage() {
       <MetricsTabs
         tabs={{
           dashboard: dashboardTab,
-          'kpi-pro-funnel': <PendingTab label="KPI Pro Funnel" />,
+          'kpi-pro-funnel': kpiProFunnelTab,
           'kpis-2026': kpis2026Tab,
           'analisis-ads': <PendingTab label="Análisis Ads" />,
           agendas: <PendingTab label="Agendas" />,
