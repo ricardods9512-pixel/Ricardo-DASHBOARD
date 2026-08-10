@@ -1,8 +1,8 @@
 import type { KpiTableData, KpiTableRow } from '@/lib/data/kpi-table'
 
-const currency = new Intl.NumberFormat('es-AR', {
+const currency = new Intl.NumberFormat('es-ES', {
   style: 'currency',
-  currency: 'USD',
+  currency: 'EUR',
   maximumFractionDigits: 0,
 })
 
@@ -15,8 +15,30 @@ function formatValue(value: number, format: KpiTableRow['format']) {
     case 'ratio':
       return `${value.toFixed(1)}x`
     default:
-      return value.toLocaleString('es-AR')
+      return value.toLocaleString('es-ES')
   }
+}
+
+type Tone = 'good' | 'warn' | 'bad' | 'neutral'
+
+const toneBackground: Record<Tone, string> = {
+  good: 'color-mix(in srgb, var(--status-good) 16%, transparent)',
+  warn: 'color-mix(in srgb, var(--status-warning) 20%, transparent)',
+  bad: 'color-mix(in srgb, var(--status-critical) 14%, transparent)',
+  neutral: 'transparent',
+}
+
+/** Semáforo: filas con umbral (%, ROAS) se colorean por valor absoluto; el resto por tendencia mes a mes. */
+function cellTone(row: KpiTableRow, value: number, previousValue: number | undefined): Tone {
+  if (row.thresholds) {
+    if (value >= row.thresholds.good) return 'good'
+    if (value >= row.thresholds.warn) return 'warn'
+    return value > 0 ? 'bad' : 'neutral'
+  }
+  if (value === 0 || previousValue === undefined || previousValue === 0 || value === previousValue) {
+    return 'neutral'
+  }
+  return value > previousValue ? 'good' : 'bad'
 }
 
 export function KpiYearTable({ data }: { data: KpiTableData }) {
@@ -44,17 +66,41 @@ export function KpiYearTable({ data }: { data: KpiTableData }) {
                 {row.label}
               </td>
               {row.values.map((v, idx) => (
-                <td key={idx} className="px-2 py-1.5 text-right tabular-nums">
+                <td
+                  key={idx}
+                  className="px-2 py-1.5 text-right tabular-nums"
+                  style={{ backgroundColor: toneBackground[cellTone(row, v, row.values[idx - 1])] }}
+                >
                   {formatValue(v, row.format)}
                 </td>
               ))}
-              <td className="px-2 py-1.5 text-right font-semibold tabular-nums">
+              <td
+                className="px-2 py-1.5 text-right font-semibold tabular-nums"
+                style={{ backgroundColor: toneBackground[cellTone(row, row.total, undefined)] }}
+              >
                 {formatValue(row.total, row.format)}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <div className="mt-3 flex flex-wrap gap-3 text-xs text-[var(--foreground-muted)]">
+        <LegendDot tone="good" label="Buen rendimiento / en alza" />
+        <LegendDot tone="warn" label="Rendimiento medio" />
+        <LegendDot tone="bad" label="Bajo rendimiento / en baja" />
+      </div>
     </div>
+  )
+}
+
+function LegendDot({ tone, label }: { tone: Tone; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        className="h-2.5 w-2.5 rounded-full"
+        style={{ backgroundColor: `var(--status-${tone === 'good' ? 'good' : tone === 'warn' ? 'warning' : 'critical'})` }}
+      />
+      {label}
+    </span>
   )
 }

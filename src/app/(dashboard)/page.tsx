@@ -11,9 +11,9 @@ import type { BusinessMetric, DiscordMetric } from '@/lib/data/types'
 import { levelForXp, studentLevelBand, STUDENT_LEVEL_BANDS } from '@/lib/data/gamification'
 import { buildKpiYearTable } from '@/lib/data/kpi-table'
 
-const currency = new Intl.NumberFormat('es-AR', {
+const currency = new Intl.NumberFormat('es-ES', {
   style: 'currency',
-  currency: 'USD',
+  currency: 'EUR',
   maximumFractionDigits: 0,
 })
 
@@ -167,8 +167,8 @@ export default async function MetricasPage() {
           </span>
         </div>
         <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-          XP: {Math.round(totalXp).toLocaleString('es-AR')}
-          {level.next && ` · próximo nivel: ${level.next} (${level.nextThreshold!.toLocaleString('es-AR')} XP)`}
+          XP: {currency.format(totalXp)}
+          {level.next && ` · próximo nivel: ${level.next} (${currency.format(level.nextThreshold!)} XP)`}
         </p>
 
         {badges.length > 0 && (

@@ -5,6 +5,8 @@ export type KpiTableRow = {
   values: number[]
   total: number
   format: 'number' | 'currency' | 'percent' | 'ratio'
+  /** Semáforo por umbral absoluto (para filas calculadas: %, ROAS). Si no se define, la fila se colorea por tendencia mes a mes. */
+  thresholds?: { good: number; warn: number }
 }
 
 export type KpiTableData = {
@@ -60,11 +62,41 @@ export function buildKpiYearTable(business: BusinessMetric[], year: number): Kpi
     { label: 'Ofertas aceptadas', values: offersAccepted, total: sumOf(offersAccepted), format: 'number' },
     { label: 'Importe ventas total', values: salesAmount, total: sumOf(salesAmount), format: 'currency' },
     { label: 'Dinero recibido', values: cashCollected, total: sumOf(cashCollected), format: 'currency' },
-    { label: '% Llamadas agendadas (vs conversaciones)', values: callsScheduledPct, total: pct(sumOf(callsScheduled), sumOf(conversations)), format: 'percent' },
-    { label: 'Asistencia a llamada de ventas %', values: attendancePct, total: pct(sumOf(callsCompleted), sumOf(callsScheduled)), format: 'percent' },
-    { label: '% Ventas (aceptadas/dadas)', values: closePct, total: pct(sumOf(offersAccepted), sumOf(offersGiven)), format: 'percent' },
-    { label: '% Dinero recibido (vs vendido)', values: cashPct, total: pct(sumOf(cashCollected), sumOf(salesAmount)), format: 'percent' },
-    { label: 'ROAS', values: roas, total: sumOf(adsInvestment) > 0 ? sumOf(salesAmount) / sumOf(adsInvestment) : 0, format: 'ratio' },
+    {
+      label: '% Llamadas agendadas (vs conversaciones)',
+      values: callsScheduledPct,
+      total: pct(sumOf(callsScheduled), sumOf(conversations)),
+      format: 'percent',
+      thresholds: { good: 3, warn: 1 },
+    },
+    {
+      label: 'Asistencia a llamada de ventas %',
+      values: attendancePct,
+      total: pct(sumOf(callsCompleted), sumOf(callsScheduled)),
+      format: 'percent',
+      thresholds: { good: 80, warn: 60 },
+    },
+    {
+      label: '% Ventas (aceptadas/dadas)',
+      values: closePct,
+      total: pct(sumOf(offersAccepted), sumOf(offersGiven)),
+      format: 'percent',
+      thresholds: { good: 30, warn: 15 },
+    },
+    {
+      label: '% Dinero recibido (vs vendido)',
+      values: cashPct,
+      total: pct(sumOf(cashCollected), sumOf(salesAmount)),
+      format: 'percent',
+      thresholds: { good: 40, warn: 20 },
+    },
+    {
+      label: 'ROAS',
+      values: roas,
+      total: sumOf(adsInvestment) > 0 ? sumOf(salesAmount) / sumOf(adsInvestment) : 0,
+      format: 'ratio',
+      thresholds: { good: 3, warn: 1 },
+    },
   ]
 
   return { monthLabels: MONTH_LABELS, rows }

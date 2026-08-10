@@ -17,9 +17,9 @@ type Series = {
   color: string
 }
 
-const currencyFormat = new Intl.NumberFormat('es-AR', {
+const currencyFormat = new Intl.NumberFormat('es-ES', {
   style: 'currency',
-  currency: 'USD',
+  currency: 'EUR',
   maximumFractionDigits: 0,
 })
 
