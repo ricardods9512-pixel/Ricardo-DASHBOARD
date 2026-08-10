@@ -17,15 +17,24 @@ type Series = {
   color: string
 }
 
+const currencyFormat = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+})
+
 export function TrendChart({
   data,
   series,
-  valueFormatter,
+  valueFormat,
 }: {
   data: Record<string, unknown>[]
   series: Series[]
-  valueFormatter?: (value: number) => string
+  valueFormat?: 'currency'
 }) {
+  const valueFormatter =
+    valueFormat === 'currency' ? (value: number) => currencyFormat.format(value) : undefined
+
   return (
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
