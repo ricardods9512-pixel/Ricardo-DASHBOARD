@@ -14,6 +14,8 @@ export async function addStudent(formData: FormData) {
     name: formData.get('name') as string,
     email: (formData.get('email') as string) || null,
     phone: (formData.get('phone') as string) || null,
+    username: (formData.get('username') as string) || null,
+    country: (formData.get('country') as string) || null,
     source: (formData.get('source') as string) || 'organico',
   })
 
@@ -21,45 +23,16 @@ export async function addStudent(formData: FormData) {
   revalidatePath('/escuela')
 }
 
-export async function addCourse(formData: FormData) {
+export async function updateMemberProfile(formData: FormData) {
   const supabase = await createClient()
-
-  const priceRaw = formData.get('price')
-  const { error } = await supabase.from('courses').insert({
-    name: formData.get('name') as string,
-    description: (formData.get('description') as string) || null,
-    price: priceRaw ? Number(priceRaw) : 0,
-  })
-
-  if (error) throw new Error(error.message)
-  revalidatePath('/escuela')
-}
-
-export async function enrollStudent(formData: FormData) {
-  const supabase = await createClient()
-
-  const { error } = await supabase.from('enrollments').insert({
-    student_id: formData.get('student_id') as string,
-    course_id: formData.get('course_id') as string,
-  })
-
-  if (error) throw new Error(error.message)
-  revalidatePath('/escuela')
-}
-
-export async function updateEnrollmentProgress(formData: FormData) {
-  const supabase = await createClient()
-
-  const id = formData.get('enrollment_id') as string
-  const progress = Number(formData.get('progress_pct'))
-  const status = progress >= 100 ? 'completado' : 'en_progreso'
+  const id = formData.get('student_id') as string
 
   const { error } = await supabase
-    .from('enrollments')
+    .from('school_students')
     .update({
-      progress_pct: progress,
-      status,
-      completed_at: progress >= 100 ? new Date().toISOString().slice(0, 10) : null,
+      username: (formData.get('username') as string) || null,
+      country: (formData.get('country') as string) || null,
+      bio: (formData.get('bio') as string) || null,
     })
     .eq('id', id)
 
@@ -67,34 +40,52 @@ export async function updateEnrollmentProgress(formData: FormData) {
   revalidatePath('/escuela')
 }
 
-export async function addGoal(formData: FormData) {
+export async function addPost(formData: FormData) {
   const supabase = await createClient()
 
-  const { error } = await supabase.from('student_goals').insert({
-    student_id: formData.get('student_id') as string,
+  const { error } = await supabase.from('community_posts').insert({
     title: formData.get('title') as string,
-    category: (formData.get('category') as string) || null,
-    target_date: (formData.get('target_date') as string) || null,
+    body: (formData.get('body') as string) || null,
+    category: (formData.get('category') as string) || 'General discussion',
   })
 
   if (error) throw new Error(error.message)
   revalidatePath('/escuela')
 }
 
-export async function updateGoalStatus(formData: FormData) {
+export async function updateModuleProgress(formData: FormData) {
   const supabase = await createClient()
-
-  const id = formData.get('goal_id') as string
-  const status = formData.get('status') as string
+  const id = formData.get('module_id') as string
+  const progress = Number(formData.get('progress_pct'))
 
   const { error } = await supabase
-    .from('student_goals')
-    .update({
-      status,
-      progress_pct: status === 'completado' ? 100 : undefined,
-      completed_date: status === 'completado' ? new Date().toISOString().slice(0, 10) : null,
-    })
+    .from('community_modules')
+    .update({ progress_pct: Math.max(0, Math.min(100, progress)) })
     .eq('id', id)
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/escuela')
+}
+
+export async function addSession(formData: FormData) {
+  const supabase = await createClient()
+
+  const { error } = await supabase.from('community_sessions').insert({
+    session_date: formData.get('session_date') as string,
+    session_time: (formData.get('session_time') as string) || '18:00',
+    title: (formData.get('title') as string) || 'Sesión en vivo',
+    meet_link: (formData.get('meet_link') as string) || null,
+  })
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/escuela')
+}
+
+export async function deleteSession(formData: FormData) {
+  const supabase = await createClient()
+  const id = formData.get('session_id') as string
+
+  const { error } = await supabase.from('community_sessions').delete().eq('id', id)
 
   if (error) throw new Error(error.message)
   revalidatePath('/escuela')
@@ -105,6 +96,14 @@ export async function awardPoints(formData: FormData) {
 
   const studentId = formData.get('student_id') as string
   const points = Number(formData.get('points'))
+  const category = (formData.get('category') as string) || 'otro'
+
+  const { error: logError } = await supabase.from('points_log').insert({
+    student_id: studentId,
+    points,
+    category,
+  })
+  if (logError) throw new Error(logError.message)
 
   const { data: student, error: fetchError } = await supabase
     .from('school_students')
@@ -120,18 +119,6 @@ export async function awardPoints(formData: FormData) {
     .from('school_students')
     .update({ points: newPoints, level: levelForPoints(newPoints) })
     .eq('id', studentId)
-
-  if (error) throw new Error(error.message)
-  revalidatePath('/escuela')
-}
-
-export async function awardBadge(formData: FormData) {
-  const supabase = await createClient()
-
-  const { error } = await supabase.from('student_badges').insert({
-    student_id: formData.get('student_id') as string,
-    badge_id: formData.get('badge_id') as string,
-  })
 
   if (error) throw new Error(error.message)
   revalidatePath('/escuela')
