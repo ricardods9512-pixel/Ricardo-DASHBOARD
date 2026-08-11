@@ -3,7 +3,9 @@ import { createClient } from '@/lib/supabase/server'
 import { StatTile } from '@/components/stat-tile'
 import { TrendChart } from '@/components/charts/trend-chart'
 import { FunnelChart } from '@/components/charts/funnel-chart'
+import { MonthlyBarChart } from '@/components/charts/monthly-bar-chart'
 import { ProgressBar } from '@/components/progress-bar'
+import { MetricTile } from '@/components/metric-tile'
 import { KpiYearTable } from '@/components/kpi-year-table'
 import { ChannelMetricForm } from '@/components/channel-metric-form'
 import { AdAnalysisMonth, type AdEntry } from '@/components/ad-analysis-month'
@@ -34,9 +36,33 @@ const currency = new Intl.NumberFormat('es-ES', {
 
 const monthLabel = new Intl.DateTimeFormat('es-AR', { month: 'short', year: '2-digit' })
 
-function pctDelta(current: number | null, previous: number | null) {
-  if (current === null || previous === null || previous === 0) return null
-  return ((current - previous) / Math.abs(previous)) * 100
+const MONTH_LABELS_ES = [
+  'ENERO',
+  'FEBRERO',
+  'MARZO',
+  'ABRIL',
+  'MAYO',
+  'JUNIO',
+  'JULIO',
+  'AGOSTO',
+  'SEPTIEMBRE',
+  'OCTUBRE',
+  'NOVIEMBRE',
+  'DICIEMBRE',
+]
+
+function monthlyValue(business: BusinessMetric[], year: number, monthIndex: number, key: keyof BusinessMetric) {
+  const row = business.find((m) => {
+    const d = new Date(m.month)
+    return d.getFullYear() === year && d.getMonth() === monthIndex
+  })
+  return row ? Number(row[key]) || 0 : 0
+}
+
+function sumForYear(business: BusinessMetric[], year: number, key: keyof BusinessMetric) {
+  return business
+    .filter((m) => new Date(m.month).getFullYear() === year)
+    .reduce((acc, m) => acc + (Number(m[key]) || 0), 0)
 }
 
 const CHANNEL_HEADER_CLASS: Record<string, string> = {
@@ -164,23 +190,6 @@ export default async function MetricasPage() {
   const sqEsteMes = studyQuestClients.filter((c) => c.fecha_alta?.slice(0, 7) === currentMonthStr).length
 
   const recentBusiness = business.slice(-12)
-  const latest = recentBusiness[recentBusiness.length - 1]
-  const previous = recentBusiness[recentBusiness.length - 2]
-
-  const roas = (m?: BusinessMetric) =>
-    m?.ads_investment ? (m.sales_amount ?? 0) / m.ads_investment : null
-  const closePct = (m?: BusinessMetric) =>
-    m?.offers_given ? ((m.offers_accepted ?? 0) / m.offers_given) * 100 : null
-
-  const salesDelta = pctDelta(latest?.sales_amount ?? null, previous?.sales_amount ?? null)
-  const cashDelta = pctDelta(latest?.cash_collected ?? null, previous?.cash_collected ?? null)
-  const roasDelta = pctDelta(roas(latest), roas(previous))
-
-  const businessChartData = recentBusiness.map((m) => ({
-    label: monthLabel.format(new Date(m.month)),
-    sales_amount: m.sales_amount ?? 0,
-    cash_collected: m.cash_collected ?? 0,
-  }))
 
   const funnelChartData = recentBusiness.map((m) => ({
     label: monthLabel.format(new Date(m.month)),
@@ -207,12 +216,80 @@ export default async function MetricasPage() {
   const cierrePct = totalOffersGiven > 0 ? (totalOffersAccepted / totalOffersGiven) * 100 : 0
 
   const currentYear = new Date().getFullYear()
+  const previousYear = currentYear - 1
   const currentYearSales = business
     .filter((m) => new Date(m.month).getFullYear() === currentYear)
     .reduce((acc, m) => acc + (m.sales_amount ?? 0), 0)
   const previousYearSales = business
     .filter((m) => new Date(m.month).getFullYear() === currentYear - 1)
     .reduce((acc, m) => acc + (m.sales_amount ?? 0), 0)
+
+  // --- Panel de control: mes en curso, acumulado anual, gráficas mensuales ---
+  const currentMonthIndex = now.getMonth()
+  const currentMonthRow = business.find((m) => {
+    const d = new Date(m.month)
+    return d.getFullYear() === currentYear && d.getMonth() === currentMonthIndex
+  })
+  const previousMonthDate = new Date(currentYear, currentMonthIndex - 1, 1)
+  const previousMonthRow = business.find((m) => {
+    const d = new Date(m.month)
+    return d.getFullYear() === previousMonthDate.getFullYear() && d.getMonth() === previousMonthDate.getMonth()
+  })
+
+  const mesFacturacion = currentMonthRow?.sales_amount ?? 0
+  const mesCash = currentMonthRow?.cash_collected ?? 0
+  const mesAds = currentMonthRow?.ads_investment ?? 0
+  const mesSeguidores = currentMonthRow?.new_followers ?? 0
+  const mesConversaciones = currentMonthRow?.conversations ?? 0
+  const mesOfertasDadas = currentMonthRow?.offers_given ?? 0
+  const mesOfertasAceptadas = currentMonthRow?.offers_accepted ?? 0
+  const mesFacturacionAnterior = previousMonthRow?.sales_amount ?? 0
+  const mesFacturacionDelta = mesFacturacion - mesFacturacionAnterior
+  const mesCobradoPct = mesFacturacion > 0 ? (mesCash / mesFacturacion) * 100 : 0
+  const mesRoas = mesAds > 0 ? mesFacturacion / mesAds : 0
+
+  const facturacionAnioActual = sumForYear(business, currentYear, 'sales_amount')
+  const cashAnioActual = sumForYear(business, currentYear, 'cash_collected')
+  const facturacionAnioAnterior = sumForYear(business, previousYear, 'sales_amount')
+  const cashAnioAnterior = sumForYear(business, previousYear, 'cash_collected')
+  const adsAnioActual = sumForYear(business, currentYear, 'ads_investment')
+  const mejorMesAnioActual = Math.max(
+    0,
+    ...MONTH_LABELS_ES.map((_, i) => monthlyValue(business, currentYear, i, 'sales_amount')),
+  )
+  const pendienteCobroAnio = facturacionAnioActual - cashAnioActual
+  const vsAnioAnteriorPct =
+    facturacionAnioAnterior > 0
+      ? ((facturacionAnioActual - facturacionAnioAnterior) / facturacionAnioAnterior) * 100
+      : null
+  const multiploAdsAnio = adsAnioActual > 0 ? facturacionAnioActual / adsAnioActual : 0
+  const cobradoAnioPct = facturacionAnioActual > 0 ? (cashAnioActual / facturacionAnioActual) * 100 : 0
+
+  const facturacionCashChartData = MONTH_LABELS_ES.map((label, i) => ({
+    label,
+    sales_amount: monthlyValue(business, currentYear, i, 'sales_amount'),
+    cash_collected: monthlyValue(business, currentYear, i, 'cash_collected'),
+  }))
+
+  const facturacionYoyChartData = MONTH_LABELS_ES.map((label, i) => ({
+    label,
+    prev_year: monthlyValue(business, previousYear, i, 'sales_amount'),
+    curr_year: monthlyValue(business, currentYear, i, 'sales_amount'),
+  }))
+
+  const sqVencidas = studyQuestClients.reduce((acc, c) => {
+    let n = 0
+    if (c.toca_3m && c.toca_3m < todayStr && c.check_3m === 0) n++
+    if (c.toca_6m && c.toca_6m < todayStr && c.check_6m === 0) n++
+    if (c.toca_9m && c.toca_9m < todayStr && c.check_9m === 0) n++
+    return acc + n
+  }, 0)
+  const sqExitoPct = studyQuestClients.length > 0 ? (sqCasosExito / studyQuestClients.length) * 100 : 0
+
+  const leadsClients = agendaLeads.filter((l) => l.status === 'CLIENT').length
+  const leadsVentasSi = agendaLeads.filter((l) => l.venta === 'SI').length
+  const leadsNotClosed = agendaLeads.filter((l) => l.status === 'NOT CLOSED').length
+  const leadsNoShow = agendaLeads.filter((l) => l.status === 'NO SHOW').length
 
   let streakMonths = 0
   for (let i = business.length - 1; i >= 0; i--) {
@@ -277,6 +354,106 @@ export default async function MetricasPage() {
 
   const dashboardTab = (
     <div className="flex flex-col gap-8">
+      <div>
+        <p className="text-xs font-medium text-[var(--foreground-muted)]">
+          🟢 Actualizado en vivo · Hoy es {new Intl.DateTimeFormat('es-ES').format(now)} · Mes en curso: mes{' '}
+          {currentMonthIndex + 1}
+        </p>
+      </div>
+
+      <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+        <div className="bg-black px-5 py-2.5">
+          <h2 className="text-sm font-semibold text-[#f5c518]">
+            🔥 Mes en curso — se actualiza solo cada mes
+          </h2>
+        </div>
+        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3 lg:grid-cols-6">
+          <MetricTile
+            icon="💰"
+            label="Facturación"
+            value={currency.format(mesFacturacion)}
+            accent="var(--series-1)"
+            sublabel={`${mesFacturacionDelta >= 0 ? '▲' : '▼'} ${currency.format(Math.abs(mesFacturacionDelta))} vs mes ant.`}
+            subTone={mesFacturacionDelta >= 0 ? 'good' : 'bad'}
+          />
+          <MetricTile
+            icon="💵"
+            label="Cash"
+            value={currency.format(mesCash)}
+            accent="var(--status-good)"
+            sublabel={`Cobrado ${mesCobradoPct.toFixed(0)}% del mes`}
+          />
+          <MetricTile
+            icon="🎯"
+            label="Ads"
+            value={currency.format(mesAds)}
+            accent="#a855f7"
+            sublabel={`ROAS mes: ${mesRoas.toFixed(1)}x`}
+          />
+          <MetricTile icon="👥" label="Seguidores" value={String(mesSeguidores)} accent="#8b5cf6" />
+          <MetricTile icon="💬" label="Conversaciones" value={String(mesConversaciones)} accent="#ec4899" />
+          <MetricTile
+            icon="🎁"
+            label="Ofertas"
+            value={String(mesOfertasDadas)}
+            accent="#f97316"
+            sublabel={`Aceptadas: ${mesOfertasAceptadas}`}
+          />
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+        <div className="bg-[#7a1f1f] px-5 py-2.5">
+          <h2 className="text-sm font-semibold text-white">💰 Acumulado anual</h2>
+        </div>
+        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3 lg:grid-cols-6">
+          <MetricTile
+            icon="💰"
+            label={`Facturación ${currentYear}`}
+            value={currency.format(facturacionAnioActual)}
+            accent="var(--series-1)"
+            sublabel={
+              vsAnioAnteriorPct !== null
+                ? `${vsAnioAnteriorPct >= 0 ? '▲' : '▼'} ${vsAnioAnteriorPct >= 0 ? '+' : ''}${vsAnioAnteriorPct.toFixed(0)}% vs ${previousYear} completo`
+                : undefined
+            }
+            subTone={vsAnioAnteriorPct !== null && vsAnioAnteriorPct >= 0 ? 'good' : 'bad'}
+          />
+          <MetricTile
+            icon="💵"
+            label={`Cash ${currentYear}`}
+            value={currency.format(cashAnioActual)}
+            accent="var(--status-good)"
+            sublabel={`Pendiente cobro: ${currency.format(pendienteCobroAnio)}`}
+          />
+          <MetricTile
+            icon="📦"
+            label={`Facturación ${previousYear}`}
+            value={currency.format(facturacionAnioAnterior)}
+            accent="#f97316"
+          />
+          <MetricTile
+            icon="📦"
+            label={`Cash ${previousYear}`}
+            value={currency.format(cashAnioAnterior)}
+            accent="#b45309"
+          />
+          <MetricTile
+            icon="🏆"
+            label={`Mejor mes ${String(currentYear).slice(2)}`}
+            value={currency.format(mejorMesAnioActual)}
+            accent="var(--status-critical)"
+          />
+          <MetricTile
+            icon="🎯"
+            label={`Inversión Ads ${String(currentYear).slice(2)}`}
+            value={currency.format(adsAnioActual)}
+            accent="#a855f7"
+            sublabel={`Múltiplo: ${multiploAdsAnio.toFixed(1)}x facturación/ads`}
+          />
+        </div>
+      </section>
+
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold">🎮 Nivel y progreso</h2>
@@ -302,13 +479,14 @@ export default async function MetricasPage() {
           </div>
         )}
 
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <ProgressBar
             label={level.next ? `Hacia ${level.next}` : 'Nivel máximo alcanzado'}
             pct={level.progressPct}
             color="var(--series-1)"
           />
-          <ProgressBar label="% Cobrado (histórico)" pct={cobradoPct} color="var(--series-3)" />
+          <ProgressBar label={`% Cobrado ${currentYear}`} pct={cobradoAnioPct} color="var(--series-3)" />
+          <ProgressBar label="% Casos de éxito" pct={sqExitoPct} color="#8b5cf6" />
           <ProgressBar label="% Cierre de leads" pct={cierrePct} color="var(--series-2)" />
         </div>
 
@@ -328,48 +506,67 @@ export default async function MetricasPage() {
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile
-          label="Facturación (último mes)"
-          value={latest?.sales_amount != null ? currency.format(latest.sales_amount) : '—'}
-          delta={salesDelta !== null ? `${salesDelta >= 0 ? '+' : ''}${salesDelta.toFixed(1)}% vs mes anterior` : undefined}
-          deltaTone={salesDelta !== null ? (salesDelta >= 0 ? 'good' : 'bad') : 'neutral'}
-        />
-        <StatTile
-          label="Cash cobrado (último mes)"
-          value={latest?.cash_collected != null ? currency.format(latest.cash_collected) : '—'}
-          delta={cashDelta !== null ? `${cashDelta >= 0 ? '+' : ''}${cashDelta.toFixed(1)}% vs mes anterior` : undefined}
-          deltaTone={cashDelta !== null ? (cashDelta >= 0 ? 'good' : 'bad') : 'neutral'}
-        />
-        <StatTile
-          label="ROAS"
-          value={roas(latest) != null ? `${roas(latest)!.toFixed(1)}x` : '—'}
-          delta={roasDelta !== null ? `${roasDelta >= 0 ? '+' : ''}${roasDelta.toFixed(1)}% vs mes anterior` : undefined}
-          deltaTone={roasDelta !== null ? (roasDelta >= 0 ? 'good' : 'bad') : 'neutral'}
-        />
-        <StatTile
-          label="% Cierre (ofertas)"
-          value={closePct(latest) != null ? `${closePct(latest)!.toFixed(1)}%` : '—'}
-          deltaTone="neutral"
-        />
-      </div>
-
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Facturación vs Cash cobrado</h2>
+      <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+        <div className="bg-[#1f2937] px-5 py-2.5">
+          <h2 className="text-sm font-semibold text-white">🎓 Alumnos · 📅 Leads</h2>
         </div>
-        {businessChartData.length > 0 ? (
-          <TrendChart
-            data={businessChartData}
-            series={[
-              { key: 'sales_amount', label: 'Facturación', color: 'var(--series-1)' },
-              { key: 'cash_collected', label: 'Cash cobrado', color: 'var(--series-2)' },
-            ]}
-            valueFormat="currency"
-          />
-        ) : (
-          <EmptyChartState />
-        )}
+        <div className="grid grid-cols-1 gap-6 p-5 sm:grid-cols-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground-muted)]">
+              🎓 Alumnos (StudyQuest)
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-3">
+              <MetricTile icon="🎓" label="Clientes" value={String(studyQuestClients.length)} accent="var(--series-1)" />
+              <MetricTile icon="⏰" label="Vencidas" value={String(sqVencidas)} accent="var(--status-critical)" />
+            </div>
+            <p className="mt-3 text-xs text-[var(--foreground-secondary)]">
+              🏆 Éxito: {sqCasosExito} ({sqExitoPct.toFixed(0)}%) · 📆 Próximos 30 días: {sqProximos30}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground-muted)]">
+              📅 Leads (Agendas)
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-3">
+              <MetricTile icon="✅" label="Clients" value={String(leadsClients)} accent="var(--status-good)" />
+              <MetricTile icon="💰" label="Ventas SI" value={String(leadsVentasSi)} accent="var(--series-1)" />
+            </div>
+            <p className="mt-3 text-xs text-[var(--foreground-secondary)]">
+              ⛔ Not closed: {leadsNotClosed} · 👻 No show: {leadsNoShow}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+        <div className="bg-black px-5 py-2.5">
+          <h2 className="text-sm font-semibold text-white">📈 Gráficas</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-2">
+          <div>
+            <h3 className="text-sm font-semibold">💰 Facturación vs Cash — {currentYear}</h3>
+            <MonthlyBarChart
+              data={facturacionCashChartData}
+              series={[
+                { key: 'sales_amount', label: 'Facturación', color: 'var(--series-1)' },
+                { key: 'cash_collected', label: 'Cash', color: 'var(--status-good)' },
+              ]}
+            />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold">
+              📈 Facturación: {previousYear} vs {currentYear}
+            </h3>
+            <MonthlyBarChart
+              data={facturacionYoyChartData}
+              series={[
+                { key: 'prev_year', label: String(previousYear), color: '#f97316' },
+                { key: 'curr_year', label: String(currentYear), color: 'var(--series-1)' },
+              ]}
+            />
+          </div>
+        </div>
       </section>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
