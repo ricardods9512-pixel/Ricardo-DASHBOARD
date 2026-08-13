@@ -8,6 +8,7 @@ const TEMPLATES = [
   { id: '1cc9yWPCnJQgy_jPRUuc5Ca28slMwPs_E', label: 'Cuestionario diagnóstico inicial' },
   { id: '1w0BCiHDPXi8aaUptYnFzh1_JZobFX4FQr2hYFdQ7ZXo', label: 'Plan de acción' },
   { id: '1jGbM_qZyf3c2sEhwGW4McP4_h8ojkGdq', label: 'Notas por trimestre' },
+  { id: '1BGX5bIReNQN3f0c6gHcyXrODrJZbOJSR', label: 'Habit Tracker' },
 ]
 
 export function getOAuthClient() {
