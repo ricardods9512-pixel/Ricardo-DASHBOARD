@@ -1,5 +1,6 @@
 import { addStudent } from '@/app/(dashboard)/escuela/actions'
 import { COUNTRY_NAMES } from '@/lib/data/countries'
+import { PendingSubmitButton } from './pending-submit-button'
 
 export function MemberEntryForm() {
   return (
@@ -50,10 +51,11 @@ export function MemberEntryForm() {
             ))}
           </select>
         </label>
+        <p className="col-span-2 text-[10px] text-[var(--foreground-muted)]">
+          Puede tardar unos segundos: además de guardarlo, crea su carpeta en Google Drive.
+        </p>
         <div className="col-span-2">
-          <button type="submit" className="rounded-lg bg-[var(--series-1)] px-4 py-2 text-sm font-semibold text-white">
-            Guardar miembro
-          </button>
+          <PendingSubmitButton label="Guardar miembro" pendingLabel="Guardando y creando carpeta en Drive…" />
         </div>
       </form>
     </details>
