@@ -10,6 +10,7 @@ export type Member = {
   bio: string | null
   status: string | null
   enrolled_at: string | null
+  drive_folder_url: string | null
 }
 
 const dateFormatter = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -60,6 +61,16 @@ export function MemberDirectory({ members }: { members: Member[] }) {
             <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-3 text-xs text-[var(--foreground-muted)]">
               {m.enrolled_at && <span>📅 Se unió el {dateFormatter.format(new Date(m.enrolled_at))}</span>}
               {m.email && <span>✉️ {m.email}</span>}
+              {m.drive_folder_url && (
+                <a
+                  href={m.drive_folder_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-[var(--series-1)]"
+                >
+                  📁 Ver carpeta en Drive
+                </a>
+              )}
             </div>
 
             <form action={updateMemberProfile} id={formId} className="mt-3 flex flex-wrap items-end gap-2">

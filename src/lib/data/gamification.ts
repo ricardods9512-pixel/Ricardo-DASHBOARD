@@ -40,3 +40,19 @@ export function studentLevelBand(level: number | null) {
 }
 
 export const STUDENT_LEVEL_BANDS = ['Bronce', 'Plata', 'Oro', 'Platino', 'Leyenda'] as const
+
+export function levelForPoints(points: number) {
+  return Math.floor(points / 200) + 1
+}
+
+export function pointsProgressInLevel(points: number) {
+  const level = levelForPoints(points)
+  const levelStart = (level - 1) * 200
+  const pointsInLevel = points - levelStart
+  return {
+    level,
+    pointsInLevel,
+    pointsToNext: 200 - pointsInLevel,
+    progressPct: Math.min(100, (pointsInLevel / 200) * 100),
+  }
+}

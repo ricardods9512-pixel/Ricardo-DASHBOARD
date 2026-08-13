@@ -9,6 +9,7 @@ const TABS = [
   { id: 'miembros', label: 'Miembros', icon: '👥' },
   { id: 'mapa', label: 'Mapa', icon: '🌍' },
   { id: 'clasificacion', label: 'Tablas de clasificación', icon: '🏆' },
+  { id: 'juegos', label: 'Juegos', icon: '🎮' },
 ] as const
 
 export type EscuelaTabId = (typeof TABS)[number]['id']

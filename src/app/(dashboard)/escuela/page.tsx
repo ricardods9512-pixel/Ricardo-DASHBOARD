@@ -7,6 +7,17 @@ import { MemberDirectory, type Member } from '@/components/escuela/member-direct
 import { MemberEntryForm } from '@/components/escuela/member-entry-form'
 import { WorldMap } from '@/components/escuela/world-map'
 import { Leaderboard, type LeaderboardRow } from '@/components/escuela/leaderboard'
+import { DriveConnectionStatus } from '@/components/escuela/drive-connection-status'
+import { GameReview, type SubmissionForReview } from '@/components/escuela/game-review'
+
+const DRIVE_BANNER: Record<string, { text: string; tone: 'good' | 'bad' }> = {
+  connected: { text: '✅ Google Drive conectado correctamente.', tone: 'good' },
+  error: { text: '⚠️ No se pudo conectar Google Drive. Intentalo de nuevo.', tone: 'bad' },
+  no_refresh_token: {
+    text: '⚠️ Google no envió permiso permanente. Desconectá el acceso desde tu cuenta de Google y volvé a intentar.',
+    tone: 'bad',
+  },
+}
 
 type PointsLogRow = {
   student_id: string
@@ -28,7 +39,12 @@ function rankPoints(log: PointsLogRow[], students: Member[], sinceDays: number |
     .slice(0, 20)
 }
 
-export default async function EscuelaPage() {
+export default async function EscuelaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ drive?: string }>
+}) {
+  const { drive: driveStatus } = await searchParams
   const supabase = await createClient()
 
   const [
@@ -37,13 +53,23 @@ export default async function EscuelaPage() {
     { data: modules },
     { data: sessions },
     { data: pointsLog },
+    { data: driveAuth },
+    { data: submissions },
   ] = await Promise.all([
     supabase.from('school_students').select('*').order('points', { ascending: false }),
     supabase.from('community_posts').select('*').order('created_at', { ascending: false }),
     supabase.from('community_modules').select('*').order('sort_order', { ascending: true }),
     supabase.from('community_sessions').select('*').order('session_date', { ascending: true }),
     supabase.from('points_log').select('student_id, points, occurred_at').order('occurred_at', { ascending: false }),
+    supabase.from('google_drive_auth').select('connected_email').eq('id', 1).maybeSingle(),
+    supabase
+      .from('game_submissions')
+      .select('id, student_id, category, note, status, points_awarded, created_at, image_path')
+      .order('created_at', { ascending: false })
+      .limit(200),
   ])
+
+  const driveBanner = driveStatus ? DRIVE_BANNER[driveStatus] : undefined
 
   const members = (students ?? []) as Member[]
   const log = (pointsLog ?? []) as PointsLogRow[]
@@ -59,6 +85,20 @@ export default async function EscuelaPage() {
     active: m.status === 'activo',
   }))
 
+  const nameById = new Map(members.map((m) => [m.id, m.name]))
+  const submissionsForReview: SubmissionForReview[] = await Promise.all(
+    (submissions ?? []).map(async (s) => {
+      const { data: signed } = await supabase.storage
+        .from('game-submissions')
+        .createSignedUrl(s.image_path, 3600)
+      return {
+        ...s,
+        student_name: nameById.get(s.student_id) ?? 'Alumno',
+        imageUrl: signed?.signedUrl ?? null,
+      }
+    }),
+  )
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -68,6 +108,15 @@ export default async function EscuelaPage() {
         </p>
       </div>
 
+      {driveBanner && (
+        <p
+          className="rounded-xl border border-[var(--border)] p-3 text-sm font-medium"
+          style={{ color: driveBanner.tone === 'good' ? 'var(--status-good)' : 'var(--status-critical)' }}
+        >
+          {driveBanner.text}
+        </p>
+      )}
+
       <EscuelaTabs
         tabs={{
           comunidad: <CommunityFeed posts={(posts ?? []) as CommunityPost[]} memberCount={members.length} />,
@@ -75,6 +124,7 @@ export default async function EscuelaPage() {
           calendario: <SessionCalendar sessions={(sessions ?? []) as CommunitySession[]} />,
           miembros: (
             <div className="flex flex-col gap-4">
+              <DriveConnectionStatus connectedEmail={driveAuth?.connected_email ?? null} />
               <MemberEntryForm />
               <MemberDirectory members={members} />
             </div>
@@ -88,6 +138,7 @@ export default async function EscuelaPage() {
               students={members.map((m) => ({ id: m.id, name: m.name }))}
             />
           ),
+          juegos: <GameReview submissions={submissionsForReview} />,
         }}
       />
     </div>

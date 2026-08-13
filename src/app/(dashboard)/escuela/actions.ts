@@ -2,23 +2,75 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createStudentDriveKit } from '@/lib/google-drive'
+import { levelForPoints } from '@/lib/data/gamification'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
-function levelForPoints(points: number) {
-  return Math.floor(points / 200) + 1
+async function awardPointsToStudent(
+  supabase: SupabaseClient,
+  studentId: string,
+  points: number,
+  category: string,
+) {
+  const { error: logError } = await supabase.from('points_log').insert({
+    student_id: studentId,
+    points,
+    category,
+  })
+  if (logError) throw new Error(logError.message)
+
+  const { data: student, error: fetchError } = await supabase
+    .from('school_students')
+    .select('points')
+    .eq('id', studentId)
+    .single()
+
+  if (fetchError) throw new Error(fetchError.message)
+
+  const newPoints = (student?.points ?? 0) + points
+
+  const { error } = await supabase
+    .from('school_students')
+    .update({ points: newPoints, level: levelForPoints(newPoints) })
+    .eq('id', studentId)
+
+  if (error) throw new Error(error.message)
 }
 
 export async function addStudent(formData: FormData) {
   const supabase = await createClient()
+  const name = formData.get('name') as string
 
-  const { error } = await supabase.from('school_students').insert({
-    name: formData.get('name') as string,
-    email: (formData.get('email') as string) || null,
-    phone: (formData.get('phone') as string) || null,
-    username: (formData.get('username') as string) || null,
-    country: (formData.get('country') as string) || null,
-    source: (formData.get('source') as string) || 'organico',
-  })
+  const { data: student, error } = await supabase
+    .from('school_students')
+    .insert({
+      name,
+      email: (formData.get('email') as string) || null,
+      phone: (formData.get('phone') as string) || null,
+      username: (formData.get('username') as string) || null,
+      country: (formData.get('country') as string) || null,
+      source: (formData.get('source') as string) || 'organico',
+    })
+    .select('id')
+    .single()
 
+  if (error) throw new Error(error.message)
+
+  try {
+    const folderUrl = await createStudentDriveKit(name)
+    if (folderUrl && student) {
+      await supabase.from('school_students').update({ drive_folder_url: folderUrl }).eq('id', student.id)
+    }
+  } catch {
+    // La carpeta de Drive es un extra: si falla, el alumno igual queda cargado.
+  }
+
+  revalidatePath('/escuela')
+}
+
+export async function disconnectGoogleDrive() {
+  const supabase = await createClient()
+  const { error } = await supabase.from('google_drive_auth').delete().eq('id', 1)
   if (error) throw new Error(error.message)
   revalidatePath('/escuela')
 }
@@ -98,27 +150,24 @@ export async function awardPoints(formData: FormData) {
   const points = Number(formData.get('points'))
   const category = (formData.get('category') as string) || 'otro'
 
-  const { error: logError } = await supabase.from('points_log').insert({
-    student_id: studentId,
-    points,
-    category,
-  })
-  if (logError) throw new Error(logError.message)
+  await awardPointsToStudent(supabase, studentId, points, category)
+  revalidatePath('/escuela')
+}
 
-  const { data: student, error: fetchError } = await supabase
-    .from('school_students')
-    .select('points')
-    .eq('id', studentId)
-    .single()
+export async function reviewSubmission(formData: FormData) {
+  const supabase = await createClient()
 
-  if (fetchError) throw new Error(fetchError.message)
+  const submissionId = formData.get('submission_id') as string
+  const studentId = formData.get('student_id') as string
+  const category = formData.get('category') as string
+  const points = Number(formData.get('points'))
 
-  const newPoints = (student?.points ?? 0) + points
+  await awardPointsToStudent(supabase, studentId, points, category)
 
   const { error } = await supabase
-    .from('school_students')
-    .update({ points: newPoints, level: levelForPoints(newPoints) })
-    .eq('id', studentId)
+    .from('game_submissions')
+    .update({ status: 'revisado', points_awarded: points, reviewed_at: new Date().toISOString() })
+    .eq('id', submissionId)
 
   if (error) throw new Error(error.message)
   revalidatePath('/escuela')
