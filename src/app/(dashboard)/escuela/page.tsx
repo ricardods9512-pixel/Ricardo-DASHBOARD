@@ -9,6 +9,7 @@ import { WorldMap } from '@/components/escuela/world-map'
 import { Leaderboard, type LeaderboardRow } from '@/components/escuela/leaderboard'
 import { DriveConnectionStatus } from '@/components/escuela/drive-connection-status'
 import { GameReview, type SubmissionForReview } from '@/components/escuela/game-review'
+import { AdminSubmissionForm } from '@/components/escuela/admin-submission-form'
 
 const DRIVE_BANNER: Record<string, { text: string; tone: 'good' | 'bad' }> = {
   connected: { text: '✅ Google Drive conectado correctamente.', tone: 'good' },
@@ -138,7 +139,12 @@ export default async function EscuelaPage({
               students={members.map((m) => ({ id: m.id, name: m.name }))}
             />
           ),
-          juegos: <GameReview submissions={submissionsForReview} />,
+          juegos: (
+            <div className="flex flex-col gap-4">
+              <AdminSubmissionForm students={members.map((m) => ({ id: m.id, name: m.name }))} />
+              <GameReview submissions={submissionsForReview} />
+            </div>
+          ),
         }}
       />
     </div>

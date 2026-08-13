@@ -154,6 +154,36 @@ export async function awardPoints(formData: FormData) {
   revalidatePath('/escuela')
 }
 
+export async function adminUploadSubmission(formData: FormData) {
+  const supabase = await createClient()
+
+  const studentId = formData.get('student_id') as string
+  const category = formData.get('category') as string
+  const note = (formData.get('note') as string) || null
+  const file = formData.get('image') as File
+
+  if (!studentId) throw new Error('Elegí un alumno.')
+  if (!file || file.size === 0) throw new Error('Elegí una foto para subir.')
+
+  const ext = file.name.split('.').pop() || 'jpg'
+  const path = `${studentId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+
+  const { error: uploadError } = await supabase.storage.from('game-submissions').upload(path, file, {
+    contentType: file.type,
+  })
+  if (uploadError) throw new Error(uploadError.message)
+
+  const { error } = await supabase.from('game_submissions').insert({
+    student_id: studentId,
+    category,
+    image_path: path,
+    note,
+  })
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/escuela')
+}
+
 export async function reviewSubmission(formData: FormData) {
   const supabase = await createClient()
 
