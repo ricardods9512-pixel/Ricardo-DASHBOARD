@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { ensureStudentDmChannels } from './actions'
+import { ensureStudentDmChannels, ensureStudentCommsSetup } from './actions'
 import { ChannelSidebar, type SidebarChannel } from '@/components/comunicaciones/channel-sidebar'
 import { ChannelMessages, type CommMessage } from '@/components/comunicaciones/channel-messages'
 
@@ -9,6 +9,7 @@ export default async function ComunicacionesPage({
   searchParams: Promise<{ channel?: string }>
 }) {
   await ensureStudentDmChannels()
+  await ensureStudentCommsSetup()
 
   const { channel: channelSlug } = await searchParams
   const supabase = await createClient()
@@ -23,9 +24,11 @@ export default async function ComunicacionesPage({
   const allChannels = (channels ?? []) as (SidebarChannel & { kind: string })[]
   const canales = allChannels.filter((c) => c.kind === 'canal')
   const privados = allChannels.filter((c) => c.kind === 'privado')
+  const individuales = allChannels.filter((c) => c.kind === 'individual')
   const dms = allChannels.filter((c) => c.kind === 'dm')
 
-  const active = allChannels.find((c) => c.slug === channelSlug) ?? canales[0] ?? privados[0] ?? dms[0]
+  const active =
+    allChannels.find((c) => c.slug === channelSlug) ?? canales[0] ?? privados[0] ?? individuales[0] ?? dms[0]
 
   const { data: messages } = active
     ? await supabase
@@ -46,7 +49,13 @@ export default async function ComunicacionesPage({
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row">
-        <ChannelSidebar canales={canales} privados={privados} dms={dms} activeSlug={active?.slug ?? ''} />
+        <ChannelSidebar
+          canales={canales}
+          privados={privados}
+          individuales={individuales}
+          dms={dms}
+          activeSlug={active?.slug ?? ''}
+        />
         {active ? (
           <div className="flex-1">
             <ChannelMessages

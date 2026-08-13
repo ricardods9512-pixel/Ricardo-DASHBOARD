@@ -25,11 +25,13 @@ function ChannelLink({ channel, active }: { channel: SidebarChannel; active: boo
 export function ChannelSidebar({
   canales,
   privados,
+  individuales,
   dms,
   activeSlug,
 }: {
   canales: SidebarChannel[]
   privados: SidebarChannel[]
+  individuales: SidebarChannel[]
   dms: SidebarChannel[]
   activeSlug: string
 }) {
@@ -53,6 +55,19 @@ export function ChannelSidebar({
           </p>
           <div className="mt-1 flex flex-col gap-0.5">
             {privados.map((c) => (
+              <ChannelLink key={c.id} channel={c} active={c.slug === activeSlug} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {individuales.length > 0 && (
+        <div>
+          <p className="px-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground-muted)]">
+            Canales de trabajo individual
+          </p>
+          <div className="mt-1 flex max-h-64 flex-col gap-0.5 overflow-y-auto">
+            {individuales.map((c) => (
               <ChannelLink key={c.id} channel={c} active={c.slug === activeSlug} />
             ))}
           </div>
